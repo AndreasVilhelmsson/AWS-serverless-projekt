@@ -169,6 +169,8 @@ sam deploy --config-file samconfig.toml --resolve-s3 --no-confirm-changeset
 
 `CorsOrigin` i `samconfig.toml` pekar på CloudFront-domänen så att API:t bara accepterar trafik från rätt ursprung.
 
+Körningen av `sam build` skapar katalogen `.aws-sam/` lokalt. Den rymmer byggda Lambda-artefakter under `build/`, en cache som gör nästa build snabbare och en uppdaterad kopia av mallen där `CodeUri` pekar på de paketerade zip-filerna. Mappen är en ren arbetskopia för SAM och behöver inte versionshanteras.
+
 Frontenden byggs lokalt och laddas upp till S3 med separata cacheinställningar för indexfilen och de versionerade bundlade filerna:
 
 ```bash
