@@ -13,6 +13,8 @@ Systemet använder en helt serverlös arkitektur visualiserad i figuren nedan. A
 
 ![Arkitekturdiagram](images/Architecture.jpg)
 
+![Arkitekturskiss – relationsöversikt](images/architectur.jpg)
+
 Distribueringen sker i region `eu-west-1` för att minimera latens mot de tänkta användarna i Norden. Kombinationen av global CloudFront-cache och `PAY_PER_REQUEST` på DynamoDB innebär att driftkostnaderna är direkt kopplade till faktiskt nyttjande och att skalningen hanteras automatiskt.
 
 ## Infrastruktur som kod
@@ -71,16 +73,51 @@ Ett tidigt arkitekturbeslut var att lagra `createdAt` som epoch-millisekunder i 
 - `template.yaml:34` begränsar Lambda-behörigheter till CRUD mot just `ContactMessages`.
 - CORS-hantering i `lambda/index.mjs:13` möjliggör säkra cross-origin-anrop för SPA.
 - `GET /health`-endpoint (`lambda/index.mjs:24`) förenklar monitorering utan att exponera känslig data.
+- Övervakning sker enklast via `sam logs -n ApiFn --stack-name serverless-contact-form --tail`, vilket streamar loggarna direkt från Lambda.
+- Kostnaden hålls låg eftersom varje tjänst är pay-per-use (CloudFront, API Gateway, Lambda och DynamoDB on-demand) och därmed bara debiterar verkligt nyttjande.
 
 Utöver detta loggas alla lyckade POST-anrop i CloudTrail eftersom IAM-rollen som SAM skapar spåras automatiskt. HTTPS är obligatoriskt via CloudFront-distributionen och statiska resurser kan versioneras genom `Cache-Control`-headers i S3, vilket planeras för nästa release.
+
+## Driftsättning
+Backend distribueras med AWS SAM och körs i två steg:
+
+```bash
+sam build
+sam deploy --config-file samconfig.toml --resolve-s3 --no-confirm-changeset
+```
+
+`CorsOrigin` i `samconfig.toml` pekar på CloudFront-domänen så att API:t bara accepterar trafik från rätt ursprung.
+
+Frontenden byggs lokalt och laddas upp till S3 med separata cacheinställningar för indexfilen och de versionerade bundlade filerna:
+
+```bash
+npm run build
+aws s3 sync frontend/dist/ s3://<bucket>/ --delete --cache-control "public,max-age=31536000,immutable" --exclude "index.html"
+aws s3 cp frontend/dist/index.html s3://<bucket>/index.html --cache-control "no-cache" --content-type "text/html"
+aws cloudfront create-invalidation --distribution-id <DIST_ID> --paths "/*"
+```
+
+Cachepolicyn gör att `index.html` uppdateras direkt efter deploy, medan hashade assets kan ligga kvar länge i CloudFront utan att användarna drabbas av gamla filer.
 
 ## Testning och validering
 - Manuell end-to-end-testning via CloudFront-URL, bekräftad i `images/Cloudfront.jpg`.
 - DynamoDB-konsolen (`images/DynamoDB.jpg`) visar lagrade poster.
 - Lambda-konsolen (`images/lambda.jpg`) verifierar bindningen till API Gateway och senaste deploy.
 - Lokal utveckling med `npm run dev` och `sam local start-api` möjliggör snabb feedback.
+- För regressionstestning används ett litet Postman-collection (ej incheckat) som kör `GET` och `POST` mot `/messages` efter varje deploy. Nästa steg är att automatisera den körningen i exempelvis GitHub Actions med hjälp av `newman`.
 
-För regressionstestning används ett litet Postman-collection (ej incheckat) som kör `GET` och `POST` mot `/messages` efter varje deploy. Nästa steg är att automatisera den körningen i exempelvis GitHub Actions med hjälp av `newman`.
+Vid behov kan CORS verifieras manuellt från terminalen:
+
+```bash
+API="https://<api-id>.execute-api.eu-west-1.amazonaws.com"
+ORIGIN="https://<cloudfront>.cloudfront.net"
+curl -i -X OPTIONS "$API/messages" -H "Origin: $ORIGIN" -H "Access-Control-Request-Method: GET"
+curl -i -H "Origin: $ORIGIN" "$API/messages"
+```
+
+## Utmaningar
+- När projektet sattes upp med `sam init` föreslog guiden en Fargate-baserad variant som bygger en container för Intel-processorer. Min Mac med M1 (ARM) kunde inte starta den, så alla lokala kommandon tvärstannade. Vi gjorde därför om funktionen till den vanliga Lambda-modellen där koden laddas upp som ett zip-paket, och då fungerade utvecklingsflödet direkt.
+- När frontenden testades första gången stoppades begäranden av webbläsarens CORS-skydd. Vi lade till de saknade svarshuvudena i `lambda/index.mjs:12`–`lambda/index.mjs:22`, vilket gav klartecken för både förfrågningar och formulärpostningar från webben.
 
 ## Fortsatt arbete
 1. Lägg till autentisering, t.ex. Amazon Cognito, för att hindra spam och logga användare.
