@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Serverless Contact Form (HTTP API + Lambda + DynamoDB)
+
+Parameters:
+  TableName:
+    Type: String
+    Default: ContactMessages
+
+Resources:
+  # 👉 DETTA MÅSTE VARA DIN DYNAMODB-TABELL
+  Table:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref TableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  # 👉 DIN LAMBDA-FUNKTION (OBS: logiska namnet SKA INTE vara "Table")
+  ApiFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Timeout: 6
+      MemorySize: 256
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TableName
+      Events:
+        Health:
+          Type: HttpApi
+          Properties:
+            Path: /health
+            Method: GET
+            ApiId: !Ref HttpApi
+        MessagesGet:
+          Type: HttpApi
+          Properties:
+            Path: /messages
+            Method: GET
+            ApiId: !Ref HttpApi
+        MessagesPost:
+          Type: HttpApi
+          Properties:
+            Path: /messages
+            Method: POST
+            ApiId: !Ref HttpApi
+        # Preflight till Lambda (vi kör CORS i koden)
+        MessagesOptions:
+          Type: HttpApi
+          Properties:
+            Path: /messages
+            Method: OPTIONS
+            ApiId: !Ref HttpApi
+
+  # 👉 HTTP API utan Managed CORS (vi skickar CORS-headrar i Lambda)
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties: {}
+
+Outputs:
+  ApiUrl:
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+    Description: Base URL for the HTTP API

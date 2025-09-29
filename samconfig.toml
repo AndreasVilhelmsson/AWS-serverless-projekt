@@ -1,0 +1,14 @@
+version = 0.1
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.deploy.parameters]
+stack_name = "serverless-contact-form"
+resolve_s3 = true
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "CorsOrigin=https://dlxy7rp2ol1rs1.cloudfront.net"
+region = "eu-west-1"
+

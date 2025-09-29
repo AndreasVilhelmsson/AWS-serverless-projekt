@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Static React app on private S3 behind CloudFront (OAC) with SPA fallback
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: Globally unique S3 bucket name (e.g. my-frontend-andreas-20250922)
+
+Resources:
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      # Rätt blockering av publik åtkomst i CFN
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      VersioningConfiguration:
+        Status: Enabled
+
+  # Origin Access Control (CloudFront → S3, privat bucket)
+  OAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-oac"
+        Description: OAC for CloudFront to access private S3
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: Static React app
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_100
+        HttpVersion: http2
+        Origins:
+          - Id: s3-origin
+            DomainName: !GetAtt SiteBucket.RegionalDomainName
+            S3OriginConfig: {}                      # krävs syntaktiskt
+            OriginAccessControlId: !GetAtt OAC.Id   # auth via OAC
+        DefaultCacheBehavior:
+          TargetOriginId: s3-origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods:  [GET, HEAD, OPTIONS]
+          Compress: true
+          # AWS managed policies
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6         # CachingOptimized
+          ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03 # CORS-Simple
+        # Single-page-app fallback (react-router etc)
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+
+  # Enda som får läsa ur bucketen är vår CloudFront-distribution via OAC
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontReadViaOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub arn:aws:s3:::${BucketName}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
+Outputs:
+  BucketName:
+    Value: !Ref BucketName
+  DistributionId:
+    Value: !Ref Distribution
+  DistributionDomainName:
+    Value: !GetAtt Distribution.DomainName
