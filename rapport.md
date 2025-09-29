@@ -225,7 +225,8 @@ curl -i -H "Origin: $ORIGIN" "$API/messages"
 3. Upprätta CI/CD som kör tester och automatiserar `npm run build` + `sam deploy`.
 4. Samla loggar och metriker i en CloudWatch-dashboard för bättre insyn.
 5. Utöka frontenden med visuella bekräftelser (t.ex. toasts) och lazy loading av äldre meddelanden för att hantera större dataset.
+6. uppdatera Cors till ännu säkrare production mode.
 
 ## Slutsats
 
-Projektet uppnår målet att leverera ett serverlöst kontaktformulär med minimal drift. Arkitekturen skalar automatiskt, koden är modulärt organiserad och infrastrukturen definieras som kod, vilket gör lösningen enkel att vidareutveckla och driftsätta i nya miljöer.
+mitt projekt uppfyller förhoppningsvis kraven på uppgiften uppnår med att leverera ett serverlöst kontaktformulär med minimal drift. Arkitekturen skalar automatiskt, koden är modulärt organiserad och infrastrukturen definieras som kod, vilket gör lösningen enkel att vidareutveckla och driftsätta i nya miljöer. Det har varit intressant och lärorikt att bygga miljöer och blanda frontend och devops i samma uppgift. mycket att ta in samtidigt men ändå kul att testa sig fram. Dock utmanande att att lösa de fel som uppstår och att hitta rätt lösning.
