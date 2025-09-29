@@ -8,6 +8,15 @@ Detta dokument sammanfattar utvecklingen av **Serverless Contact Form**, en serv
 - Distribuera frontenden globalt för låg latens och hög tillgänglighet.
 - Dokumentera dataflöde, kodkomponenter och visuella verifieringar från AWS-konsolen.
 
+## Genomförande steg för steg
+1. **Förberedelser.** Installerade AWS SAM CLI och verifierade AWS-profilerna för att kunna skapa resurser i `eu-west-1` utan att använda root-nycklar.
+2. **Initial backend-skiss.** Körning av `sam init` genererade första versionen av `template.yaml`. Efter att ha märkt att guiden föreslog Fargate skapades projektet på nytt som klassisk Lambda för att undvika containerberoende på Mac M1.
+3. **Infrastruktur som kod.** Uppdaterade `template.yaml` för att definiera DynamoDB-tabell, Lambda och HTTP API-triggers, samt `samconfig.toml` för återkommande deployparametrar.
+4. **Lambda-implementation.** Skrev logiken i `lambda/index.mjs` för CORS, validering och DynamoDB-åtkomst. Testade lokalt med `sam local start-api` och justerade tills JSON-formatet fungerade.
+5. **Frontend.** Scaffoldade en React/Vite-app i `frontend/`, byggde `MessageForm`, `MessageList` och API-klienten som använder bas-URL:en från SAM-utdata.
+6. **Static hosting-infra.** Beskrev S3 + CloudFront med Origin Access Control i `infra-frontend.yaml` för en privat bucket bakom CDN med SPA-fallback.
+7. **Deploy & verifiering.** Kör `sam build && sam deploy` för backend, `npm run build` följt av `aws s3 sync` och CloudFront-invalidation för frontend, och bekräftade resultatet via skärmdumparna i rapporten.
+
 ## Arkitekturöversikt
 Systemet använder en helt serverlös arkitektur visualiserad i figuren nedan. Användaren når webbappen via CloudFront som hämtar statiska filer från en S3-bucket skyddad av Origin Access Control. Formulärposter skickas till API Gateway som proxar vidare till Lambda, där logik körs mot DynamoDB-tabellen `ContactMessages`. Eventuella svar går tillbaka samma väg, vilket ger ett robust request–response-flöde utan att en enda EC2-instans behöver provisioneras.
 
