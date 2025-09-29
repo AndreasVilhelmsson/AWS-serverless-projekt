@@ -9,7 +9,9 @@ Detta dokument sammanfattar utvecklingen av **Serverless Contact Form**, en serv
 - Dokumentera dataflöde, kodkomponenter och visuella verifieringar från AWS-konsolen.
 
 ## Arkitekturöversikt
-Systemet använder en helt serverlös arkitektur visualiserad i `images/Architecture.jpg`. Användaren når webbappen via CloudFront som hämtar statiska filer från en S3-bucket skyddad av Origin Access Control. Formulärposter skickas till API Gateway som proxar vidare till Lambda, där logik körs mot DynamoDB-tabellen `ContactMessages`. Eventuella svar går tillbaka samma väg, vilket ger ett robust request–response-flöde utan att en enda EC2-instans behöver provisioneras.
+Systemet använder en helt serverlös arkitektur visualiserad i figuren nedan. Användaren når webbappen via CloudFront som hämtar statiska filer från en S3-bucket skyddad av Origin Access Control. Formulärposter skickas till API Gateway som proxar vidare till Lambda, där logik körs mot DynamoDB-tabellen `ContactMessages`. Eventuella svar går tillbaka samma väg, vilket ger ett robust request–response-flöde utan att en enda EC2-instans behöver provisioneras.
+
+![Arkitekturdiagram](images/Architecture.jpg)
 
 Distribueringen sker i region `eu-west-1` för att minimera latens mot de tänkta användarna i Norden. Kombinationen av global CloudFront-cache och `PAY_PER_REQUEST` på DynamoDB innebär att driftkostnaderna är direkt kopplade till faktiskt nyttjande och att skalningen hanteras automatiskt.
 
@@ -36,7 +38,9 @@ Affärslogiken ligger i `lambda/index.mjs:1`.
 - `lambda/index.mjs:41` validerar inkommande POST-data, skapar `id` via `crypto.randomUUID()` och sparar med `PutCommand`.
 - `lambda/index.mjs:68` fångar okända rutter och `lambda/index.mjs:73` loggar och returnerar 500 vid fel.
 
-Skärmdumpen `images/lambda.jpg` visar funktionen `serverless-contact-form-ApiFn` kopplad till fyra API Gateway-triggers.
+Skärmdumpen nedan visar funktionen `serverless-contact-form-ApiFn` kopplad till fyra API Gateway-triggers.
+
+![Lambdaöversikt](images/lambda.jpg)
 
 I utvecklingsmiljön kördes funktionen lokalt med `sam local start-api`, vilket speglar API Gateway-beteendet. Därigenom kunde JSON-svar och statuskoder verifieras innan deploy. För felsökning användes `console.error` i kombination med CloudWatch Logs, vilket tydliggjorde exempelvis tidiga `SerializationException` när payload-formen inte matchade tabellens schema.
 
@@ -49,12 +53,16 @@ Frontendkoden finns i `frontend/` och bundlas med Vite.
 - `frontend/src/components/MessageList/MessageList.tsx:1` renderar `Message`-poster och formaterar `createdAt` med `toLocaleString`.
 - `frontend/src/styles/app.scss:1` importerar mixins och definierar layout; färgtemat ligger i `frontend/src/styles/_variables.scss:1` och kortdesignen i `frontend/src/styles/_mixins.scss:1`.
 
-Produktionens utseende syns i `images/Cloudfront.jpg`, där den distribuerade SPA:n visar flera testposter och bekräftar att datumformatet anpassas till användarens locale.
+Produktionens utseende syns i bilden nedan, där den distribuerade SPA:n visar flera testposter och bekräftar att datumformatet anpassas till användarens locale.
+
+![CloudFront-distribution](images/Cloudfront.jpg)
 
 En custom-hook (`frontend/src/hooks/useMessages.ts:1`) kapslar listning och skapande av meddelanden. Den används inte i slutversionen av `App`, men demonstrerar ett skalbart mönster för delad state-hantering och kan aktiveras om applikationen får fler komponenter.
 
 ## Databas
-DynamoDB-tabellen `ContactMessages` driftas enligt `template.yaml:14` och verifieras i `images/DynamoDB.jpg`. Skärmdumpen visar attributen `id`, `createdAt`, `name` och `message`, vilket matchar datamodellen som både backend (`lambda/index.mjs:52`) och frontend (`frontend/src/api/client.ts:4`) använder.
+DynamoDB-tabellen `ContactMessages` driftas enligt `template.yaml:14` och verifieras i skärmdumpen nedan. Bilden visar attributen `id`, `createdAt`, `name` och `message`, vilket matchar datamodellen som både backend (`lambda/index.mjs:52`) och frontend (`frontend/src/api/client.ts:4`) använder.
+
+![DynamoDB-tabell](images/DynamoDB.jpg)
 
 Ett tidigt arkitekturbeslut var att lagra `createdAt` som epoch-millisekunder i stället för ISO-strängar. Det möjliggör snabb sortering i både backend (`lambda/index.mjs:33`) och frontend utan extra index. Om projektet växer kan en Global Secondary Index på exempelvis `name` läggas till via samma mall för att stödja filtrering eller sökfunktion.
 
