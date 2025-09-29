@@ -1,36 +1,43 @@
 # Serverless Contact Form – Projektrapport
 
 ## Introduktion
-Detta dokument sammanfattar utvecklingen av **Serverless Contact Form**, en serverlös webbapplikation byggd i ett AWS-labb. Projektet utforskar hur ett helt serverlöst arbetsflöde kan leverera ett interaktivt kontaktformulär med minimala driftkostnader. Applikationen gör det möjligt för användare att skicka meddelanden som lagras i DynamoDB och visas i ett React-gränssnitt distribuerat via CloudFront. Rapporten redovisar dessutom de verktyg, beslutsunderlag och praktiska lärdomar som uppstod under arbetets gång.
+
+Denna rapport är en sammanfatting av alla delar som jag gjorde när jag skapade **Serverless Contact Form**, en serverlös webbapplikation byggd i AWS. Projektets mål var en IAC lösning och ett helt serverlöst arbetsflöde som kan leverera ett interaktivt kontaktformulär med minimala driftkostnader kanske en mer realistisk lösning om man har en liten budget. Formuläret gör det möjligt för användare att skicka meddelanden som lagras i DynamoDB och visas i en lista distribuerat via CloudFront. Rapporten redovisar mina väg till mål eller så långt som jag kom i arbetet, beslutsunderlag och praktiska lärdomar som uppstod under arbetets gång.
 
 ## Mål och omfattning
+
 - Tillhandahålla ett kontaktformulär utan serveradministration med automatisk skalning.
-- Distribuera frontenden globalt för låg latens och hög tillgänglighet.
+- Distribuera frontenden globalt för låg svarstid och hög tillgänglighet.
 - Dokumentera dataflöde, kodkomponenter och visuella verifieringar från AWS-konsolen.
 
 ## Genomförande steg för steg
+
 1. **Förberedelser.** Installerade AWS SAM CLI och verifierade AWS-profilerna för att kunna skapa resurser i `eu-west-1` utan att använda root-nycklar.
-2. **Initial backend-skiss.** Körning av `sam init` genererade första versionen av `template.yaml`. Efter att ha märkt att guiden föreslog Fargate skapades projektet på nytt som klassisk Lambda för att undvika containerberoende på Mac M1.
+2. **Initial backend-skiss.** Körning av `sam init` genererade första versionen av `template.yaml`. Efter att ha läst att en variation av best praxis för var att använda Fargate skapades projektet på nytt som klassisk Lambda för att undvika containerberoende på Mac M1.
 3. **Infrastruktur som kod.** Uppdaterade `template.yaml` för att definiera DynamoDB-tabell, Lambda och HTTP API-triggers, samt `samconfig.toml` för återkommande deployparametrar.
 4. **Lambda-implementation.** Skrev logiken i `lambda/index.mjs` för CORS, validering och DynamoDB-åtkomst. Testade lokalt med `sam local start-api` och justerade tills JSON-formatet fungerade.
-5. **Frontend.** Scaffoldade en React/Vite-app i `frontend/`, byggde `MessageForm`, `MessageList` och API-klienten som använder bas-URL:en från SAM-utdata.
-6. **Static hosting-infra.** Beskrev S3 + CloudFront med Origin Access Control i `infra-frontend.yaml` för en privat bucket bakom CDN med SPA-fallback.
-7. **Deploy & verifiering.** Kör `sam build && sam deploy` för backend, `npm run build` följt av `aws s3 sync` och CloudFront-invalidation för frontend, och bekräftade resultatet via skärmdumparna i rapporten.
+   Tog lång tid att felsöka de problem som uppstod med cors innan jag löste problemet.
+5. **Frontend.** Scaffoldade en React/Vite-app i `frontend/`, byggde `MessageForm`, `MessageList` och API-klienten som använder bas-URL:en från SAM-utdata. Formuläret är till för att kunna skicka data till en databas i backend med hjälp av backend kod.
+6. **Static hosting-infra.** Beskrev S3 + CloudFront med Origin Access Control i `infra-frontend.yaml` för en privat bucket bakom CDN med SPA-fallback. S3 = lagrar filerna (HTML, CSS, JS, bilder). CloudFront = distribuerar filerna globalt via ett Content Delivery Network (CDN) för snabbare laddning. och fungerar även som ett säkerhetslager och skyddar så användare aldrig pratar direkt med S3.
+7. **Deploy & verifiering.** Kör `sam build && sam deploy` för backend, `npm run build` följt av `aws s3 sync` och CloudFront-invalidation för frontend, och bekräftade resultatet via Consolen i AWS.
 
 ## Arkitekturöversikt
+
 Systemet använder en helt serverlös arkitektur visualiserad i figuren nedan. Användaren når webbappen via CloudFront som hämtar statiska filer från en S3-bucket skyddad av Origin Access Control. Formulärposter skickas till API Gateway som proxar vidare till Lambda, där logik körs mot DynamoDB-tabellen `ContactMessages`. Eventuella svar går tillbaka samma väg, vilket ger ett robust request–response-flöde utan att en enda EC2-instans behöver provisioneras.
 
 ![Arkitekturdiagram](images/Architecture.jpg)
 
 ![Arkitekturskiss – relationsöversikt](images/architectur.jpg)
 
-Distribueringen sker i region `eu-west-1` för att minimera latens mot de tänkta användarna i Norden. Kombinationen av global CloudFront-cache och `PAY_PER_REQUEST` på DynamoDB innebär att driftkostnaderna är direkt kopplade till faktiskt nyttjande och att skalningen hanteras automatiskt.
+Distribueringen sker i region `eu-west-1` för att minimera långa laddtider mot de tänkta användarna i Europa. Kombinationen av global CloudFront-cache och `PAY_PER_REQUEST` på DynamoDB innebär att driftkostnaderna är direkt kopplade till faktiskt nyttjande och skalningen i serverlesslösningen sker helt automatiskt via Lambda och DynamoDB.
 
 ## Infrastruktur som kod
+
 AWS SAM beskriver infrastrukturen i `template.yaml:1`.
 
 - `template.yaml:12` definierar DynamoDB-tabellen med hashnyckel `id` och `BillingMode: PAY_PER_REQUEST`.
-- `template.yaml:19` låser tabellens attributdefinition till strängar vilket förenklar klientvalidering.
+- `template.yaml:19` låser tabellens attributdefinition till strängar vilket förenklar klientvalidering. att det bara var 2 input fält förenklade även ett sånt beslut. vilket innebär
+  konsekvent dataformat mellan klient och databas
 - `template.yaml:24` skapar Lambda-funktionen `ApiFn` med Node.js 20, 256 MB minne och miljövariabeln `TABLE_NAME`.
 - `template.yaml:43` konfigurerar HTTP API-evenemang för `/health`, `/messages` (GET/POST) samt `OPTIONS` för CORS.
 - `template.yaml:55` exporterar bas-URL:en för åtkomst efter `sam deploy`.
@@ -65,6 +72,7 @@ Resources:
 Under utvecklingen användes `sam build` för att paketera Lambda-koden och `sam deploy --guided` för att skapa IAM-resurser. Konfiguration sparades i `samconfig.toml`, vilket gav en smidig repeat-deploy utan att behöva svara på samma frågor flera gånger.
 
 ## Backend (Lambda)
+
 Affärslogiken ligger i `lambda/index.mjs:1`.
 
 - `lambda/index.mjs:12` initierar `DynamoDBDocumentClient` och basheaders för CORS.
@@ -77,6 +85,8 @@ Affärslogiken ligger i `lambda/index.mjs:1`.
 Skärmdumpen nedan visar funktionen `serverless-contact-form-ApiFn` kopplad till fyra API Gateway-triggers.
 
 ![Lambdaöversikt](images/lambda.jpg)
+
+![API Gateway-konfiguration](images/ApiGateway.jpg)
 
 I utvecklingsmiljön kördes funktionen lokalt med `sam local start-api`, vilket speglar API Gateway-beteendet. Därigenom kunde JSON-svar och statuskoder verifieras innan deploy. För felsökning användes `console.error` i kombination med CloudWatch Logs, vilket tydliggjorde exempelvis tidiga `SerializationException` när payload-formen inte matchade tabellens schema.
 
@@ -103,6 +113,7 @@ if (method === "POST" && path === "/messages") {
 ```
 
 ## Frontend (React + Vite)
+
 Frontendkoden finns i `frontend/` och bundlas med Vite.
 
 - `frontend/src/App.tsx:1` hämtar meddelanden via `listMessages`, hanterar `loading`/`error` och uppdaterar listan efter POST.
@@ -143,6 +154,7 @@ return (
 ```
 
 ## Databas
+
 DynamoDB-tabellen `ContactMessages` driftas enligt `template.yaml:14` och verifieras i skärmdumpen nedan. Bilden visar attributen `id`, `createdAt`, `name` och `message`, vilket matchar datamodellen som både backend (`lambda/index.mjs:52`) och frontend (`frontend/src/api/client.ts:4`) använder.
 
 ![DynamoDB-tabell](images/DynamoDB.jpg)
@@ -150,6 +162,7 @@ DynamoDB-tabellen `ContactMessages` driftas enligt `template.yaml:14` och verifi
 Ett tidigt arkitekturbeslut var att lagra `createdAt` som epoch-millisekunder i stället för ISO-strängar. Det möjliggör snabb sortering i både backend (`lambda/index.mjs:33`) och frontend utan extra index. Om projektet växer kan en Global Secondary Index på exempelvis `name` läggas till via samma mall för att stödja filtrering eller sökfunktion.
 
 ## Drifts- och säkerhetsaspekter
+
 - CloudFront Origin Access Control (se `images/Architecture.jpg`) skyddar S3-bucketen från direktåtkomst.
 - `template.yaml:34` begränsar Lambda-behörigheter till CRUD mot just `ContactMessages`.
 - CORS-hantering i `lambda/index.mjs:13` möjliggör säkra cross-origin-anrop för SPA.
@@ -160,6 +173,7 @@ Ett tidigt arkitekturbeslut var att lagra `createdAt` som epoch-millisekunder i 
 Utöver detta loggas alla lyckade POST-anrop i CloudTrail eftersom IAM-rollen som SAM skapar spåras automatiskt. HTTPS är obligatoriskt via CloudFront-distributionen och statiska resurser kan versioneras genom `Cache-Control`-headers i S3, vilket planeras för nästa release.
 
 ## Driftsättning
+
 Backend distribueras med AWS SAM och körs i två steg:
 
 ```bash
@@ -183,6 +197,7 @@ aws cloudfront create-invalidation --distribution-id <DIST_ID> --paths "/*"
 Cachepolicyn gör att `index.html` uppdateras direkt efter deploy, medan hashade assets kan ligga kvar länge i CloudFront utan att användarna drabbas av gamla filer.
 
 ## Testning och validering
+
 - Manuell end-to-end-testning via CloudFront-URL, bekräftad i `images/Cloudfront.jpg`.
 - DynamoDB-konsolen (`images/DynamoDB.jpg`) visar lagrade poster.
 - Lambda-konsolen (`images/lambda.jpg`) verifierar bindningen till API Gateway och senaste deploy.
@@ -199,10 +214,12 @@ curl -i -H "Origin: $ORIGIN" "$API/messages"
 ```
 
 ## Utmaningar
+
 - När projektet sattes upp med `sam init` föreslog guiden en Fargate-baserad variant som bygger en container för Intel-processorer. Min Mac med M1 (ARM) kunde inte starta den, så alla lokala kommandon tvärstannade. Vi gjorde därför om funktionen till den vanliga Lambda-modellen där koden laddas upp som ett zip-paket, och då fungerade utvecklingsflödet direkt.
 - När frontenden testades första gången stoppades begäranden av webbläsarens CORS-skydd. Vi lade till de saknade svarshuvudena i `lambda/index.mjs:12`–`lambda/index.mjs:22`, vilket gav klartecken för både förfrågningar och formulärpostningar från webben.
 
 ## Fortsatt arbete
+
 1. Lägg till autentisering, t.ex. Amazon Cognito, för att hindra spam och logga användare.
 2. Implementera rate limiting eller reCAPTCHA för ytterligare skydd mot missbruk.
 3. Upprätta CI/CD som kör tester och automatiserar `npm run build` + `sam deploy`.
@@ -210,4 +227,5 @@ curl -i -H "Origin: $ORIGIN" "$API/messages"
 5. Utöka frontenden med visuella bekräftelser (t.ex. toasts) och lazy loading av äldre meddelanden för att hantera större dataset.
 
 ## Slutsats
+
 Projektet uppnår målet att leverera ett serverlöst kontaktformulär med minimal drift. Arkitekturen skalar automatiskt, koden är modulärt organiserad och infrastrukturen definieras som kod, vilket gör lösningen enkel att vidareutveckla och driftsätta i nya miljöer.
