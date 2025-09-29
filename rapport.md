@@ -28,6 +28,31 @@ AWS SAM beskriver infrastrukturen i `template.yaml:1`.
 
 Mallen möjliggör reproducerbara driftsättningar och least-privilege genom inbyggd `DynamoDBCrudPolicy`.
 
+```yaml
+# template.yaml (utdrag)
+Resources:
+  Table:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+  ApiFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs20.x
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TableName
+```
+
 Under utvecklingen användes `sam build` för att paketera Lambda-koden och `sam deploy --guided` för att skapa IAM-resurser. Konfiguration sparades i `samconfig.toml`, vilket gav en smidig repeat-deploy utan att behöva svara på samma frågor flera gånger.
 
 ## Backend (Lambda)
@@ -46,6 +71,28 @@ Skärmdumpen nedan visar funktionen `serverless-contact-form-ApiFn` kopplad till
 
 I utvecklingsmiljön kördes funktionen lokalt med `sam local start-api`, vilket speglar API Gateway-beteendet. Därigenom kunde JSON-svar och statuskoder verifieras innan deploy. För felsökning användes `console.error` i kombination med CloudWatch Logs, vilket tydliggjorde exempelvis tidiga `SerializationException` när payload-formen inte matchade tabellens schema.
 
+```javascript
+// lambda/index.mjs (utdrag)
+const baseHeaders = {
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Methods": "OPTIONS,GET,POST",
+};
+
+if (method === "POST" && path === "/messages") {
+  const body = JSON.parse(event.body || "{}");
+  const item = {
+    id: crypto.randomUUID(),
+    name: String(body.name ?? "").trim(),
+    message: String(body.message ?? "").trim(),
+    createdAt: Date.now(),
+  };
+  await ddb.send(new PutCommand({ TableName: TABLE, Item: item }));
+  return { statusCode: 201, headers: baseHeaders, body: JSON.stringify(item) };
+}
+```
+
 ## Frontend (React + Vite)
 Frontendkoden finns i `frontend/` och bundlas med Vite.
 
@@ -60,6 +107,31 @@ Produktionens utseende syns i bilden nedan, där den distribuerade SPA:n visar f
 ![CloudFront-distribution](images/Cloudfront.jpg)
 
 En custom-hook (`frontend/src/hooks/useMessages.ts:1`) kapslar listning och skapande av meddelanden. Den används inte i slutversionen av `App`, men demonstrerar ett skalbart mönster för delad state-hantering och kan aktiveras om applikationen får fler komponenter.
+
+```tsx
+// frontend/src/App.tsx (utdrag)
+const handleSubmit = async (name: string, message: string) => {
+  setLoading(true);
+  setError(null);
+  try {
+    await createMessage({ name, message });
+    setMessages(await listMessages());
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Failed to send");
+  } finally {
+    setLoading(false);
+  }
+};
+
+return (
+  <div className="panel">
+    <MessageForm onSubmit={handleSubmit} disabled={loading} />
+    {error && <p className="error">{error}</p>}
+    {loading && <div className="spinner" />}
+    <MessageList items={messages} />
+  </div>
+);
+```
 
 ## Databas
 DynamoDB-tabellen `ContactMessages` driftas enligt `template.yaml:14` och verifieras i skärmdumpen nedan. Bilden visar attributen `id`, `createdAt`, `name` och `message`, vilket matchar datamodellen som både backend (`lambda/index.mjs:52`) och frontend (`frontend/src/api/client.ts:4`) använder.
