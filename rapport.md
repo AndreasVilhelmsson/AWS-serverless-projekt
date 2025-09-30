@@ -230,3 +230,11 @@ curl -i -H "Origin: $ORIGIN" "$API/messages"
 ## Slutsats
 
 Mitt projekt uppfyller förhoppningsvis kraven på uppgiften. Att leverera ett serverlöst kontaktformulär med minimal drift. Arkitekturen skalar automatiskt, koden är modulärt organiserad och infrastrukturen definieras som kod, vilket gör lösningen enkel att vidareutveckla och driftsätta i nya miljöer. Det har varit intressant och lärorikt att bygga miljöer och blanda frontend och devops i samma uppgift. mycket att ta in samtidigt men ändå kul att testa sig fram. Dock utmanande att att lösa de fel som uppstår och att hitta rätt lösning.
+
+## Länkar
+
+- https://d1xy7rp2ol1rs1.cloudfront.net/
+- http://react-web-alb-701996674.eu-west-1.elb.amazonaws.com/
+  https://github.com/AndreasVilhelmsson/AWS-Container-projekt/blob/main/rapport.md
+- https://github.com/AndreasVilhelmsson/AWS-Container-projekt
+- https://github.com/AndreasVilhelmsson/AWS-serverless-projekt
